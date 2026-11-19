@@ -51,7 +51,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);background:color-mix(in 
 .nav a:hover{color:var(--ink)}
 .nav .home{display:block;line-height:0}
 .nav svg.logo{height:30px;width:auto}
-@media(max-width:640px){.nav ul{display:none}}
+@media(max-width:640px){.nav ul li:not(.login){display:none}}
 
 /* hero */
 .hero{padding-block:clamp(56px,10vw,120px) clamp(40px,7vw,80px)}
@@ -191,6 +191,7 @@ footer .row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 2
       <li><a href="#approach">Approach</a></li>
       <li><a href="#about">About</a></li>
       <li><a href="#contact">Contact</a></li>
+      <li class="login"><a href="/tracker/">Login</a></li>
     </ul>
   </div>
 </header>
