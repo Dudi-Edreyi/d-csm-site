@@ -272,7 +272,7 @@ var L=(function(){
   function scoreProject(email,p){var subj=' '+norm(email.subject)+' ',from=' '+norm((email.sender||'')+' '+(email.senderName||''))+' ',body=' '+norm(email.body||email.summary)+' ',t=projTerms(p),score=0,why=null;
     function hit(term,ws,wf,wb){var k=' '+term+' ';if(subj.indexOf(k)>=0){score+=ws;if(!why)why='"'+term+'" in the subject'}else if(from.indexOf(k)>=0){score+=wf;if(!why)why='"'+term+'" in the contact'}else if(body.indexOf(k)>=0){score+=wb;if(!why)why='"'+term+'" in the email text'}}
     var ps=email.parties||[],GEN={'gmail.com':1,'googlemail.com':1,'outlook.com':1,'hotmail.com':1,'hotmail.co.uk':1,'live.com':1,'live.co.uk':1,'yahoo.com':1,'yahoo.co.uk':1,'icloud.com':1,'me.com':1,'aol.com':1,'btinternet.com':1,'sky.com':1,'msn.com':1,'protonmail.com':1,'proton.me':1};
-    (p.contacts||[]).forEach(function(c){var ce=String(c.email||'').trim().toLowerCase(),cn=norm(c.name),dom=ce.indexOf('@')>0?ce.split('@')[1]:'',label=c.name||c.email;
+    (p.contacts||[]).forEach(function(c){var ce=String(c.email||'').trim().toLowerCase(),cn=norm(c.name),dom=ce.indexOf('@')>0?ce.split('@')[1]:'',label=(c.name||c.email)+(c.role?' ('+c.role+')':'');
       if(ce&&ps.indexOf(ce)>=0){score+=8;if(!why||score>=8)why='contact '+label}
       else if(cn.length>=3&&from.indexOf(' '+cn+' ')>=0){score+=6;if(!why)why='contact '+label}
       else if(dom&&!GEN[dom]&&ps.some(function(x){return x.slice(-dom.length-1)==='@'+dom})){score+=4;if(!why)why='the same organisation as '+label}});
@@ -513,6 +513,11 @@ function vTimesheet(){
   return h}
 
 function parseContacts(txt){return String(txt||'').split(/\r?\n/).map(function(line){var parts=line.split(/[,;<>\t]+/).map(function(x){return x.trim()}).filter(Boolean),em=parts.filter(function(x){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)})[0]||'',nm=parts.filter(function(x){return x!==em}).join(' ');return {name:nm,email:em.toLowerCase()}}).filter(function(c){return c.name||c.email}).slice(0,60)}
+var ROLES=['Client','Client representative','Contractor','Sub-contractor','Supplier','Architect','Engineer','Consultant','Other'];
+function contactRow(c){c=c||{};var roles=ROLES.slice();if(c.role&&roles.indexOf(c.role)<0)roles.push(c.role);return '<div class="row crow" style="margin-bottom:6px;align-items:center"><input class="c_name" style="width:150px" placeholder="Name" aria-label="Contact name" value="'+esc(c.name||'')+'"><input class="c_email" style="width:200px" type="email" placeholder="Email" aria-label="Contact email" value="'+esc(c.email||'')+'"><select class="c_role" aria-label="Contact role"><option value="">Role</option>'+roles.map(function(r){return '<option'+(c.role===r?' selected':'')+'>'+esc(r)+'</option>'}).join('')+'</select><button class="sm ghost" data-act="contactDel">Remove</button></div>'}
+function contactRole(pid,x){var p=proj(pid);if(!p||!p.contacts)return '';var em=String(x.email||'').toLowerCase(),nm=String(x.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  var c=p.contacts.filter(function(k){return k.email&&k.email===em})[0]||p.contacts.filter(function(k){var kn=String(k.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();return kn.length>=3&&nm&&(' '+nm+' ').indexOf(' '+kn+' ')>=0})[0];return c&&c.role||''}
+function partyLabel(em,pid){return parties(em).map(function(x){var r=pid?contactRole(pid,x):'';return (x.name||x.email||'')+(r?', '+r:'')}).filter(Boolean).join('; ')}
 function entryContacts(e){var out=[];var add=function(x){var lab=(x.dir==='from'?'From ':'To ')+(x.f||'');if(x.f&&x.dir&&out.indexOf(lab)<0)out.push(lab)};(e.emails||[]).forEach(add);(e.members||[]).forEach(function(m){(m.emails||[]).forEach(add)});
   var to=out.filter(function(x){return x.indexOf('To ')===0}).map(function(x){return x.slice(3)}).join('; ').split('; ').filter(function(x,i,a){return x&&a.indexOf(x)===i}),fr=out.filter(function(x){return x.indexOf('From ')===0}).map(function(x){return x.slice(5)}).filter(function(x,i,a){return a.indexOf(x)===i});
   return [to.length?'To '+to.join('; '):'',fr.length?'From '+fr.join('; '):''].filter(Boolean).join(', ')}
@@ -564,7 +569,7 @@ function emDate(em){return em.receivedDateTime?L.todayISO(new Date(em.receivedDa
 function emThread(em){return String(em.subject||'').toLowerCase().replace(/^((re|fw|fwd):\s*)+/i,'').replace(/\s+/g,' ').trim()+'|'+emDate(em)}
 function resuggest(){var v=ui.em;(v.rows||[]).forEach(function(em){if(v.manual[em.id])return;var sg=L.suggestProject(matchView(em),S.projects,S.sendermap);v.proj[em.id]=sg.id;v.why[em.id]=sg.why})}
 function emVisible(){var v=ui.em,f=v.f,who=f.who.trim().toLowerCase(),sj=f.subj.trim().toLowerCase();
-  var rows=(v.rows||[]).filter(function(em){if(!v.showDone&&emState(em))return false;if(who&&partyText(em).toLowerCase().indexOf(who)<0&&parties(em).map(function(x){return x.email}).join(' ').toLowerCase().indexOf(who)<0)return false;if(sj&&String(em.subject||'').toLowerCase().indexOf(sj)<0)return false;
+  var rows=(v.rows||[]).filter(function(em){if(!v.showDone&&emState(em))return false;if(who&&partyLabel(em,v.proj[em.id]).toLowerCase().indexOf(who)<0&&parties(em).map(function(x){return x.email}).join(' ').toLowerCase().indexOf(who)<0)return false;if(sj&&String(em.subject||'').toLowerCase().indexOf(sj)<0)return false;
     if(f.proj==='__none'&&v.proj[em.id])return false;if(f.proj&&f.proj!=='__none'&&v.proj[em.id]!==f.proj)return false;var d=emDate(em);if(f.from&&d<f.from)return false;if(f.to&&d>f.to)return false;return true});
   var k=v.sort.k,dir=v.sort.dir,key=function(em){return k==='who'?partyText(em).toLowerCase():k==='subj'?String(em.subject||'').toLowerCase().replace(/^((re|fw|fwd):\s*)+/i,''):k==='proj'?String((proj(v.proj[em.id])||{}).name||'￿').toLowerCase():String(em.receivedDateTime||'')};
   return rows.sort(function(a,b){var x=key(a),y=key(b);return (x<y?-1:x>y?1:String(a.receivedDateTime)<String(b.receivedDateTime)?-1:1)*dir})}
@@ -575,7 +580,7 @@ function emailTable(){var v=ui.em,aps=activeProjects(),rows=emVisible(),all=v.ro
   var nSel=rows.filter(function(em){return v.sel[em.id]}).length,th=function(k,label){return '<th><button class="thb" data-act="emSort" data-k="'+k+'">'+label+(v.sort.k===k?(v.sort.dir>0?' ▲':' ▼'):'')+'</button></th>'};
   return '<div class="tw"><table><thead><tr><th><input type="checkbox" aria-label="Tick all shown" data-act="emAll"'+(nSel===rows.length?' checked':'')+'></th>'+th('date','Date')+th('who','To or from')+th('subj','Subject')+th('proj','Project')+'<th>Minutes</th><th></th></tr></thead><tbody>'
     +rows.map(function(em){var st=emState(em),dt=em.receivedDateTime?new Date(em.receivedDateTime):null,sent=isSent(em),n=cnt[emThread(em)];
-      return '<tr><td><input type="checkbox" aria-label="Log this email" data-act="emSel" data-id="'+esc(em.id)+'"'+(v.sel[em.id]?' checked':'')+'></td><td>'+(dt?L.fmtUK(L.todayISO(dt))+'<div class="work">'+L.timeLondon(dt)+'</div>':'')+'</td><td><span class="work">'+(sent?'To':'From')+'</span> '+esc(partyText(em)||'Unknown')+'</td><td>'+esc(em.subject||'(no subject)')+(st?' <span class="pill fill">Logged</span>':'')+(n>1?' <span class="pill">Thread of '+n+'</span>':'')+(em.summary?'<div class="work">'+esc(String(em.summary).slice(0,110))+'</div>':'')+'</td><td><select aria-label="Project" data-emp="'+esc(em.id)+'"><option value="">Choose</option>'+aps.map(function(p){return '<option value="'+p.id+'"'+(v.proj[em.id]===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>'+(v.why[em.id]?'<div class="work">'+esc(v.why[em.id])+'</div>':'')+'</td><td><input class="w-s" type="number" min="0" step="1" placeholder="0" aria-label="Minutes" data-emm="'+esc(em.id)+'" value="'+esc(v.min[em.id]||'')+'"></td><td><button class="sm ghost" data-act="emCopy" data-id="'+esc(em.id)+'" title="Copy a Classic Outlook search string for this email">Copy search</button></td></tr>'}).join('')+'</tbody></table></div>'
+      return '<tr><td><input type="checkbox" aria-label="Log this email" data-act="emSel" data-id="'+esc(em.id)+'"'+(v.sel[em.id]?' checked':'')+'></td><td>'+(dt?L.fmtUK(L.todayISO(dt))+'<div class="work">'+L.timeLondon(dt)+'</div>':'')+'</td><td><span class="work">'+(sent?'To':'From')+'</span> '+esc(partyLabel(em,v.proj[em.id])||'Unknown')+'</td><td>'+esc(em.subject||'(no subject)')+(st?' <span class="pill fill">Logged</span>':'')+(n>1?' <span class="pill">Thread of '+n+'</span>':'')+(em.summary?'<div class="work">'+esc(String(em.summary).slice(0,110))+'</div>':'')+'</td><td><select aria-label="Project" data-emp="'+esc(em.id)+'"><option value="">Choose</option>'+aps.map(function(p){return '<option value="'+p.id+'"'+(v.proj[em.id]===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>'+(v.why[em.id]?'<div class="work">'+esc(v.why[em.id])+'</div>':'')+'</td><td><input class="w-s" type="number" min="0" step="1" placeholder="0" aria-label="Minutes" data-emm="'+esc(em.id)+'" value="'+esc(v.min[em.id]||'')+'"></td><td><button class="sm ghost" data-act="emCopy" data-id="'+esc(em.id)+'" title="Copy a Classic Outlook search string for this email">Copy search</button></td></tr>'}).join('')+'</tbody></table></div>'
     +'<div class="row" style="margin-top:14px"><span class="hint">'+rows.length+' shown, '+nSel+' ticked.</span><select id="emBulk" aria-label="Set ticked emails to a project"'+(nSel?'':' disabled')+'><option value="">Set ticked to project…</option>'+aps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><div class="row right"><button data-act="emLog"'+(nSel?'':' disabled')+'>Log ticked emails</button></div></div>'}
 function updateEmTable(){var t=$('emTable');if(t)t.innerHTML=emailTable();else render()}
 function vEmails(){
@@ -639,8 +644,8 @@ function projForm(p){p=p||{};var days='<option value="0">None</option>';for(var 
     +'<div class="row">'+fld('Client name','p_client','<input id="p_client" value="'+esc(p.client||'')+'">','grow')+fld('Your reference','p_ref','<input id="p_ref" class="w-m" value="'+esc(p.ref||'')+'">')+'</div>'
     +fld('Client address for invoices','p_addr','<textarea id="p_addr">'+esc(p.clientAddress||'')+'</textarea>')
     +'<div class="row">'+fld('Hourly rate, \u00A3 ex VAT','p_rate','<input id="p_rate" class="w-m" inputmode="decimal" value="'+((p.ratePence!=null?p.ratePence:cfg().defaultRatePence)/100).toFixed(2)+'">')+fld('Invoice on','p_day','<select id="p_day">'+days+'</select>')+'</div>'
-    +fld('Contacts on this project, one per line as Name, email','p_contacts','<textarea id="p_contacts" placeholder="Jo Carter, jo@carter.co.uk">'+esc((p.contacts||[]).map(function(c){return [c.name,c.email].filter(Boolean).join(', ')}).join('\n'))+'</textarea>')
-    +'<p class="hint" style="margin:-6px 0 0">Emails to or from these people are matched to this project. A person on one project only is matched straight away. Someone on several projects is decided by the subject line.</p>'
+    +'<div class="f"><span class="lbl">Contacts on this project</span><div id="p_clist">'+((p.contacts&&p.contacts.length?p.contacts:[{}]).map(contactRow).join(''))+'</div><div><button class="sm ghost" data-act="contactAdd">Add contact</button></div></div>'
+    +'<p class="hint" style="margin:-6px 0 0">Emails to or from these people are matched to this project, and their role is shown beside their name. A person on one project only is matched straight away. Someone on several projects is decided by the subject line.</p>'
     +fld('Other match words, comma separated (short codes, nicknames)','p_kw','<input id="p_kw" value="'+esc(p.keywords||'')+'">')
     +(p.id?'<p class="hint">Changing the rate affects new entries only. Time already logged keeps the rate it was logged at.</p>':'')
     +'<div class="row"><div class="row right"><button class="ghost" data-act="modalClose">Cancel</button><button data-act="projSave">Save project</button></div></div></div>')}
@@ -721,7 +726,7 @@ async function markEmails(ems,kind){var by={};ems.forEach(function(em){(by[emMon
 async function logEmails(){var v=ui.em,c=cfg(),ems=emVisible().filter(function(em){return v.sel[em.id]});if(!ems.length)return;
   if(ems.some(function(em){return !v.proj[em.id]})){toast('Choose a project for every ticked email.');return}
   if(ems.some(function(em){var n=v.min[em.id]===''||v.min[em.id]==null?0:+v.min[em.id];return !(n>=0)})){toast('Minutes must be zero or more.');return}
-  var now=new Date().toISOString(),mk=function(em){var p=proj(v.proj[em.id]),raw=Math.round(+v.min[em.id]||0),sent=isSent(em),who=partyText(em);
+  var now=new Date().toISOString(),mk=function(em){var p=proj(v.proj[em.id]),raw=Math.round(+v.min[em.id]||0),sent=isSent(em),who=partyLabel(em,v.proj[em.id]);
       return {projectId:v.proj[em.id],date:emDate(em),start:em.receivedDateTime?L.timeLondon(new Date(em.receivedDateTime)):'',desc:String(em.subject||'(no subject)'),rawMinutes:raw,minutes:raw>0?L.roundMinutes(raw,c.rounding):0,ratePence:(p&&p.ratePence)||0,source:'email',invoiceId:null,
         emails:[{s:String(em.subject||'').slice(0,140),f:who.slice(0,120),t:em.receivedDateTime||'',dir:sent?'to':'from'}],createdAt:now}};
   // Emails with the same subject line, project and day are logged as one group. Everything else is logged on its own.
@@ -780,10 +785,12 @@ var A={
   modalClose:closeModal,
   confirmYes:function(){var f=confirmFn;confirmFn=null;closeModal();if(f)f()},
   projNew:function(){projForm(null)},
+  contactAdd:function(){var l=$('p_clist');if(l){l.insertAdjacentHTML('beforeend',contactRow({}));var n=l.querySelectorAll('.c_name');n[n.length-1].focus()}},
+  contactDel:function(el){var r=el.closest('.crow'),l=$('p_clist');if(r)r.remove();if(l&&!l.querySelector('.crow'))l.insertAdjacentHTML('beforeend',contactRow({}))},
   projEdit:function(el){projForm(proj(el.dataset.id))},
   projSave:async function(){var id=$('p_id').value||uid(),old=proj(id)||{},name=$('p_name').value.trim(),rate=L.parseMoney($('p_rate').value);
     if(!name){toast('Give the project a name.');return}if(rate==null){toast('Enter the hourly rate in pounds, for example 85.00.');return}
-    var data=Object.assign({},old,{name:name,client:$('p_client').value.trim(),ref:$('p_ref').value.trim(),clientAddress:$('p_addr').value.trim(),ratePence:rate,invoiceDay:+$('p_day').value||0,keywords:$('p_kw').value.trim(),contacts:parseContacts($('p_contacts').value),active:old.active!==false,createdAt:old.createdAt||new Date().toISOString()});
+    var data=Object.assign({},old,{name:name,client:$('p_client').value.trim(),ref:$('p_ref').value.trim(),clientAddress:$('p_addr').value.trim(),ratePence:rate,invoiceDay:+$('p_day').value||0,keywords:$('p_kw').value.trim(),contacts:Array.prototype.slice.call(document.querySelectorAll('#p_clist .crow')).map(function(r){return {name:r.querySelector('.c_name').value.trim(),email:r.querySelector('.c_email').value.trim().toLowerCase(),role:r.querySelector('.c_role').value}}).filter(function(c){return c.name||c.email}).slice(0,60),active:old.active!==false,createdAt:old.createdAt||new Date().toISOString()});
     closeModal();try{await Store.set('projects',id,data);toast('Project saved.')}catch(e){}},
   projArchive:function(el){var p=proj(el.dataset.id);if(!p)return;var ub=unbilled(p.id),run=S.timer&&S.timer.projectId===p.id;
     if(run){toast('Stop the timer running on this project before archiving it.');return}
@@ -862,10 +869,10 @@ function onField(ev,isChange){var el=ev.target,d=el.dataset;if(!d)return;
   if(el.id==='emFile'){if(isChange){var fl=Array.prototype.slice.call(el.files||[]);el.value='';if(fl.length)handleFiles(fl)}return}
   if(d.d){ui.draft[d.d]=el.type==='checkbox'?el.checked:el.value;if(d.d.indexOf('l_')===0){var pv=$('l_prev');if(pv)pv.textContent=logPreviewText();return}if(isChange&&d.rr){pendingRender=false;render()}return}
   if(d.inv&&isChange){if(el.value)ui.inv[d.inv]=el.value;if(d.inv==='projectId'){var ub=unbilled(el.value).map(function(e){return e.date}).sort();ui.inv.from=ub[0]||L.monthStart(today);ui.inv.excl={};render()}else if(!coarse)pendingRender=true;return}
-  if(d.emp){ui.em.proj[d.emp]=el.value;ui.em.manual[d.emp]=1;ui.em.why[d.emp]='';return}
+  if(d.emp){ui.em.proj[d.emp]=el.value;ui.em.manual[d.emp]=1;ui.em.why[d.emp]='';if(isChange)updateEmTable();return}
   if(el.id==='emBulk'){if(isChange&&el.value){var bv=ui.em;emVisible().forEach(function(em){if(bv.sel[em.id]){bv.proj[em.id]=el.value;bv.manual[em.id]=1;bv.why[em.id]=''}});updateEmTable()}return}
-  if(el.id&&el.id.indexOf('ef_')===0){ui.em.f[el.id.slice(3)]=el.value;updateEmTable();return}
-  if(el.id&&el.id.indexOf('tf_')===0){ui.ts[el.id.slice(3)]=el.value;updateTsTable();return}
+  if(el.id&&el.id.indexOf('ef_')===0){if(ui.em.f[el.id.slice(3)]===el.value)return;ui.em.f[el.id.slice(3)]=el.value;updateEmTable();return}
+  if(el.id&&el.id.indexOf('tf_')===0){if(ui.ts[el.id.slice(3)]===el.value)return;ui.ts[el.id.slice(3)]=el.value;updateTsTable();return}
   if(d.emm){ui.em.min[d.emm]=el.value;return}}
 document.addEventListener('input',function(ev){onField(ev,false)});
 document.addEventListener('change',function(ev){onField(ev,true)});
