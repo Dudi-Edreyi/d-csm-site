@@ -339,7 +339,7 @@ var VIEWS=[['dashboard','Dashboard'],['timesheet','Timesheet'],['projects','Proj
 var DEF={name:'D-CSM Consultancy',address:'',companyNo:'',vatNo:'',contact:'',email:'',phone:'',website:'',prefix:'DCSM-',nextNumber:1,termsDays:14,bank:'',notes:'',vatOn:false,vatRate:20,rounding:15,emailMinutes:15,defaultRatePence:4850,myEmails:'',presets:'Valuation, Variation, Site visit, Meeting',searchAddress:'',ignoreSenders:''};
 var S={projects:[],entries:[],invoices:[],settings:{},timer:null,emaillog:{},sendermap:{},mode:'pending',loaded:false,slow:false};
 var today=L.todayISO();
-var ui={view:'dashboard',period:'month',chart:'week',tsSel:{},week:L.weekStart(today),draft:{},inv:null,em:{rows:null,err:null,sel:{},proj:{},min:{},why:{},manual:{},showDone:false,f:{who:'',subj:'',proj:'',from:'',to:''},sort:{k:'date',dir:1}}};
+var ui={view:'dashboard',period:'month',chart:'week',tsSel:{},ts:{q:'',proj:'',kind:'',bill:'',from:'',to:'',sort:{k:'date',dir:-1}},week:L.weekStart(today),draft:{},inv:null,em:{rows:null,err:null,sel:{},proj:{},min:{},why:{},manual:{},showDone:false,f:{who:'',subj:'',proj:'',from:'',to:''},sort:{k:'date',dir:1}}};
 var SB_URL='https://cmlqfbjwqokildwrjzql.supabase.co',SB_KEY='sb_publishable_Osv6-aIaTblCmNevYFuV1A_MKz2WZjm',sb=null,session=null,lastLoad=0,pendingRender=false,readyResolve,ready=new Promise(function(r){readyResolve=r});
 function cfg(){var o={};Object.keys(DEF).forEach(function(k){o[k]=S.settings[k]!==undefined?S.settings[k]:DEF[k]});return o}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
@@ -461,6 +461,20 @@ function vDashboard(){
 
 function entryRow(e){var p=proj(e.projectId),inv=e.invoiceId&&S.invoices.find(function(i){return i.id===e.invoiceId});
   return '<tr><td>'+(inv?'':'<input type="checkbox" aria-label="Tick to group" data-act="tsSel" data-id="'+e.id+'"'+(ui.tsSel[e.id]?' checked':'')+'>')+'</td><td>'+L.fmtUK(e.date)+(e.start?'<div class="work">'+esc(e.start)+'</div>':'')+'</td><td>'+esc(p?p.name:'Deleted project')+'</td><td>'+esc(e.desc||'')+(e.source==='group'?' <span class="pill fill">Group of '+(e.members||[]).length+'</span>':e.source==='email'?' <span class="pill">Email</span>':e.source==='timer'?' <span class="pill">Timer</span>':'')+'</td><td class="num">'+L.fmtHours(e.minutes)+(e.rawMinutes&&e.rawMinutes!==e.minutes?'<div class="work">'+(e.source==='group'?'parts ':'actual ')+L.fmtHM(e.rawMinutes)+'</div>':'')+'</td><td class="num">'+L.fmtMoney(Math.round(e.minutes*(e.ratePence||0)/60))+'<div class="work">@ '+L.fmtMoney(e.ratePence||0)+'</div></td><td><div class="acts">'+(inv?'<span class="pill fill">'+esc(inv.number)+'</span>':'')+'<button class="sm ghost" data-act="entryView" data-id="'+e.id+'">View</button>'+(inv?'':'<button class="sm ghost" data-act="entryEdit" data-id="'+e.id+'">Edit</button><button class="sm ghost" data-act="entryDel" data-id="'+e.id+'">Delete</button>')+'</div></td></tr>'}
+function tsEntries(){var f=ui.ts,q=f.q.trim().toLowerCase(),ranged=!!(f.from||f.to),a=ranged?f.from:ui.week,b=ranged?f.to:L.addDays(ui.week,6);
+  var rows=S.entries.filter(function(e){if(a&&e.date<a)return false;if(b&&e.date>b)return false;if(f.proj&&e.projectId!==f.proj)return false;if(f.kind&&(e.source||'manual')!==f.kind)return false;
+    if(f.bill==='unbilled'&&e.invoiceId)return false;if(f.bill==='invoiced'&&!e.invoiceId)return false;if(f.bill==='zero'&&e.minutes>0)return false;
+    if(q){var hay=[e.desc].concat((e.emails||[]).map(function(x){return x.f+' '+x.s})).concat((e.members||[]).map(function(m){return m.desc+' '+(m.emails||[]).map(function(x){return x.f+' '+x.s}).join(' ')})).join(' ').toLowerCase();if(hay.indexOf(q)<0)return false}return true});
+  var k=f.sort.k,dir=f.sort.dir,key=function(e){return k==='proj'?String((proj(e.projectId)||{}).name||'').toLowerCase():k==='desc'?String(e.desc||'').toLowerCase():k==='hours'?e.minutes:k==='fee'?e.minutes*(e.ratePence||0):e.date+' '+(e.start||'')};
+  return rows.sort(function(x,y){var p=key(x),r=key(y);return (p<r?-1:p>r?1:(x.date+' '+(x.start||''))<(y.date+' '+(y.start||''))?-1:1)*dir})}
+function tsTable(){var f=ui.ts,ents=tsEntries(),ranged=!!(f.from||f.to),nT=ents.filter(function(e){return ui.tsSel[e.id]&&!e.invoiceId}).length;
+  var title=ranged?('Entries '+(f.from?'from '+L.fmtUK(f.from):'')+(f.from&&f.to?' ':'')+(f.to?(f.from?'to ':'up to ')+L.fmtUK(f.to):'')):'Entries this week',th=function(k,label,num){return '<th'+(num?' class="num"':'')+'><button class="thb" data-act="tsSort" data-k="'+k+'">'+label+(f.sort.k===k?(f.sort.dir>0?' \u25B2':' \u25BC'):'')+'</button></th>'};
+  var h='<div class="row" style="margin-bottom:12px"><h2 style="margin:0">'+title+'</h2><div class="row right"><span class="hint">'+(nT?nT+' ticked':'Tick entries on the same project and day to group them')+'</span><button class="sm" data-act="entryGroup"'+(nT>=2?'':' disabled')+'>Group ticked</button></div></div>';
+  if(!ents.length)return h+'<p class="empty">'+(S.entries.length?'No entries match. Change or clear the filters'+(ranged?'.':', or move to another week.'):'Nothing logged yet.')+'</p>';
+  var byP={};ents.forEach(function(e){(byP[e.projectId]=byP[e.projectId]||[]).push(e)});var fee=Object.keys(byP).reduce(function(t,k){return t+L.amount(byP[k])},0);
+  return h+'<div class="tw"><table><thead><tr><th></th>'+th('date','Date')+th('proj','Project')+th('desc','Description')+th('hours','Hours',1)+th('fee','Fee',1)+'<th></th></tr></thead><tbody>'+ents.map(entryRow).join('')
+    +'<tr class="tot"><td></td><td colspan="3">'+ents.length+' entr'+(ents.length===1?'y':'ies')+' shown</td><td class="num">'+L.fmtHours(L.minutes(ents))+'</td><td class="num">'+L.fmtMoney(fee)+'</td><td></td></tr></tbody></table></div>'}
+function updateTsTable(){var t=$('tsTable');if(t)t.innerHTML=tsTable();else render()}
 function tickedEntries(){return S.entries.filter(function(e){return ui.tsSel[e.id]&&!e.invoiceId})}
 function flatMembers(list){var out=[];list.forEach(function(e){if(e.source==='group'&&Array.isArray(e.members))e.members.forEach(function(m){out.push(m)});else out.push(JSON.parse(JSON.stringify(e)))});return out}
 function entryDetail(e){var p=proj(e.projectId),inv=e.invoiceId&&S.invoices.find(function(i){return i.id===e.invoiceId}),r=function(a,b){return '<tr><th style="width:38%;border:none;padding:5px 10px 5px 0">'+a+'</th><td style="border:none;padding:5px 0">'+b+'</td></tr>'};
@@ -483,9 +497,12 @@ function vTimesheet(){
       +pids.map(function(pid){var p=proj(pid),pe=ents.filter(function(e){return e.projectId===pid});return '<tr><td>'+esc(p?p.name:'Deleted project')+'</td>'+days.map(function(d){return cell(L.minutes(pe.filter(function(e){return e.date===d})))}).join('')+'<td><strong>'+L.fmtHours(L.minutes(pe))+'</strong></td><td>'+L.fmtMoney(L.amount(pe))+'</td></tr>'}).join('')
       +'<tr class="tot"><td>Total</td>'+days.map(function(d){return cell(L.minutes(ents.filter(function(e){return e.date===d})))}).join('')+'<td>'+L.fmtHours(L.minutes(ents))+'</td><td>'+L.fmtMoney(pids.reduce(function(t,pid){return t+L.amount(ents.filter(function(e){return e.projectId===pid}))},0))+'</td></tr></tbody></table></div>'}
   h+='</div>';
-  if(ents.length){ents.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:String(b.start||'').localeCompare(String(a.start||''))});
-    var nT=ents.filter(function(e){return ui.tsSel[e.id]&&!e.invoiceId}).length;
-    h+='<div class="card"><div class="row" style="margin-bottom:12px"><h2 style="margin:0">Entries this week</h2><div class="row right"><span class="hint">'+(nT?nT+' ticked':'Tick entries on the same project and day to group them')+'</span><button class="sm" data-act="entryGroup"'+(nT>=2?'':' disabled')+'>Group ticked</button></div></div><div class="tw"><table><thead><tr><th></th><th>Date</th><th>Project</th><th>Description</th><th class="num">Hours</th><th class="num">Fee</th><th></th></tr></thead><tbody>'+ents.map(entryRow).join('')+'</tbody></table></div></div>'}
+  var f=ui.ts,kinds=[['','All'],['manual','Typed in'],['timer','Timer'],['email','Email'],['group','Group']];
+  h+='<div class="card"><div class="row" style="margin-bottom:14px">'+fld('Search','tf_q','<input id="tf_q" class="w-l" value="'+esc(f.q)+'" placeholder="Description or contact">')
+    +fld('Project','tf_proj','<select id="tf_proj"><option value="">All</option>'+S.projects.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name))}).map(function(p){return '<option value="'+p.id+'"'+(f.proj===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>')
+    +fld('Logged by','tf_kind','<select id="tf_kind">'+kinds.map(function(k){return '<option value="'+k[0]+'"'+(f.kind===k[0]?' selected':'')+'>'+k[1]+'</option>'}).join('')+'</select>')
+    +fld('Status','tf_bill','<select id="tf_bill"><option value="">All</option><option value="unbilled"'+(f.bill==='unbilled'?' selected':'')+'>Not invoiced</option><option value="invoiced"'+(f.bill==='invoiced'?' selected':'')+'>Invoiced</option><option value="zero"'+(f.bill==='zero'?' selected':'')+'>No time set</option></select>')
+    +fld('From date','tf_from','<input id="tf_from" type="date" value="'+f.from+'">')+fld('To date','tf_to','<input id="tf_to" type="date" value="'+f.to+'">')+'<button class="sm ghost" data-act="tsFilterClear">Clear filters</button></div><div id="tsTable">'+tsTable()+'</div></div>';
   return h}
 
 function projEmpty(pid){return !S.entries.some(function(e){return e.projectId===pid})&&!S.invoices.some(function(i){return i.projectId===pid})}
@@ -709,7 +726,9 @@ var A={
   signOut:function(){signOutLocal()},
   retry:function(){if(session)loadAll();else{S.mode='signin';render()}},
   chart:function(el){ui.chart=el.dataset.v;render()},
-  tsSel:function(el){if(el.checked)ui.tsSel[el.dataset.id]=1;else delete ui.tsSel[el.dataset.id];render()},
+  tsSel:function(el){if(el.checked)ui.tsSel[el.dataset.id]=1;else delete ui.tsSel[el.dataset.id];updateTsTable()},
+  tsSort:function(el){var so=ui.ts.sort,k=el.dataset.k;if(so.k===k)so.dir=-so.dir;else{so.k=k;so.dir=k==='date'||k==='hours'||k==='fee'?-1:1}updateTsTable()},
+  tsFilterClear:function(){var so=ui.ts.sort;ui.ts={q:'',proj:'',kind:'',bill:'',from:'',to:'',sort:so};render()},
   entryView:function(el){var e=S.entries.find(function(x){return x.id===el.dataset.id});if(e)modal(entryDetail(e))},
   entryGroup:function(){var sel=tickedEntries();if(sel.length<2){toast('Tick at least two entries to group.');return}
     if(sel.some(function(e){return e.projectId!==sel[0].projectId})){toast('Only entries on the same project can be grouped.');return}
@@ -817,6 +836,7 @@ function onField(ev,isChange){var el=ev.target,d=el.dataset;if(!d)return;
   if(d.emp){ui.em.proj[d.emp]=el.value;ui.em.manual[d.emp]=1;ui.em.why[d.emp]='';return}
   if(el.id==='emBulk'){if(isChange&&el.value){var bv=ui.em;emVisible().forEach(function(em){if(bv.sel[em.id]){bv.proj[em.id]=el.value;bv.manual[em.id]=1;bv.why[em.id]=''}});updateEmTable()}return}
   if(el.id&&el.id.indexOf('ef_')===0){ui.em.f[el.id.slice(3)]=el.value;updateEmTable();return}
+  if(el.id&&el.id.indexOf('tf_')===0){ui.ts[el.id.slice(3)]=el.value;updateTsTable();return}
   if(d.emm){ui.em.min[d.emm]=el.value;return}}
 document.addEventListener('input',function(ev){onField(ev,false)});
 document.addEventListener('change',function(ev){onField(ev,true)});
