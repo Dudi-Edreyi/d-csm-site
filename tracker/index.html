@@ -271,12 +271,17 @@ var L=(function(){
     return {phrases:phrases,words:wordsL,codes:codes.filter(function(c,ix,a){return c.length>=3&&a.indexOf(c)===ix})}}
   function scoreProject(email,p){var subj=' '+norm(email.subject)+' ',from=' '+norm((email.sender||'')+' '+(email.senderName||''))+' ',body=' '+norm(email.body||email.summary)+' ',t=projTerms(p),score=0,why=null;
     function hit(term,ws,wf,wb){var k=' '+term+' ';if(subj.indexOf(k)>=0){score+=ws;if(!why)why='"'+term+'" in the subject'}else if(from.indexOf(k)>=0){score+=wf;if(!why)why='"'+term+'" in the contact'}else if(body.indexOf(k)>=0){score+=wb;if(!why)why='"'+term+'" in the email text'}}
+    var ps=email.parties||[],GEN={'gmail.com':1,'googlemail.com':1,'outlook.com':1,'hotmail.com':1,'hotmail.co.uk':1,'live.com':1,'live.co.uk':1,'yahoo.com':1,'yahoo.co.uk':1,'icloud.com':1,'me.com':1,'aol.com':1,'btinternet.com':1,'sky.com':1,'msn.com':1,'protonmail.com':1,'proton.me':1};
+    (p.contacts||[]).forEach(function(c){var ce=String(c.email||'').trim().toLowerCase(),cn=norm(c.name),dom=ce.indexOf('@')>0?ce.split('@')[1]:'',label=c.name||c.email;
+      if(ce&&ps.indexOf(ce)>=0){score+=8;if(!why||score>=8)why='contact '+label}
+      else if(cn.length>=3&&from.indexOf(' '+cn+' ')>=0){score+=6;if(!why)why='contact '+label}
+      else if(dom&&!GEN[dom]&&ps.some(function(x){return x.slice(-dom.length-1)==='@'+dom})){score+=4;if(!why)why='the same organisation as '+label}});
     t.phrases.forEach(function(x){hit(x,6,5,3)});t.codes.forEach(function(x){hit(x,5,2,3)});t.words.forEach(function(x){hit(x,3,3,1)});return {score:score,why:why}}
   function senderProjects(email,senderMap){var ps=email.parties||[String(email.sender||'').toLowerCase()],found=null;
     for(var i=0;i<ps.length;i++){var v=ps[i]&&senderMap&&senderMap[hash(ps[i])];if(!v)continue;var list=typeof v==='string'?[v]:Object.keys(v);if(list.length!==1)return [];if(found===null)found=list[0];else if(found!==list[0])return []}
     return found?[found]:[]}
   function suggestProject(email,projects,senderMap){var open=projects.filter(function(p){return p.active!==false}),sc=open.map(function(p){var r=scoreProject(email,p);return {id:p.id,score:r.score,why:r.why}}).sort(function(a,b){return b.score-a.score});
-    if(sc.length&&sc[0].score>=3&&(sc.length===1||sc[0].score>sc[1].score))return {id:sc[0].id,why:'Matched '+sc[0].why};
+    if(sc.length&&sc[0].score>=3&&(sc.length===1||sc[0].score>sc[1].score))return {id:sc[0].id,why:(/^(contact|the same)/.test(sc[0].why)?'Matched ':'Matched ')+sc[0].why};
     var sp=senderProjects(email,senderMap).filter(function(id){return open.some(function(p){return p.id===id})});
     if(sp.length===1&&!(sc.length&&sc[0].score>=3))return {id:sp[0],why:'Logged to this project before for the same contact'};
     return {id:'',why:sc.length&&sc[0].score>=3?'More than one project matched, please choose':''}}
@@ -460,7 +465,7 @@ function vDashboard(){
   return h}
 
 function entryRow(e){var p=proj(e.projectId),inv=e.invoiceId&&S.invoices.find(function(i){return i.id===e.invoiceId});
-  return '<tr><td>'+(inv?'':'<input type="checkbox" aria-label="Tick to group" data-act="tsSel" data-id="'+e.id+'"'+(ui.tsSel[e.id]?' checked':'')+'>')+'</td><td>'+L.fmtUK(e.date)+(e.start?'<div class="work">'+esc(e.start)+'</div>':'')+'</td><td>'+esc(p?p.name:'Deleted project')+'</td><td>'+esc(e.desc||'')+(e.source==='group'?' <span class="pill fill">Group of '+(e.members||[]).length+'</span>':e.source==='email'?' <span class="pill">Email</span>':e.source==='timer'?' <span class="pill">Timer</span>':'')+'</td><td class="num">'+L.fmtHours(e.minutes)+(e.rawMinutes&&e.rawMinutes!==e.minutes?'<div class="work">'+(e.source==='group'?'parts ':'actual ')+L.fmtHM(e.rawMinutes)+'</div>':'')+'</td><td class="num">'+L.fmtMoney(Math.round(e.minutes*(e.ratePence||0)/60))+'<div class="work">@ '+L.fmtMoney(e.ratePence||0)+'</div></td><td><div class="acts">'+(inv?'<span class="pill fill">'+esc(inv.number)+'</span>':'')+'<button class="sm ghost" data-act="entryView" data-id="'+e.id+'">View</button>'+(inv?'':'<button class="sm ghost" data-act="entryEdit" data-id="'+e.id+'">Edit</button><button class="sm ghost" data-act="entryDel" data-id="'+e.id+'">Delete</button>')+'</div></td></tr>'}
+  return '<tr><td>'+(inv?'':'<input type="checkbox" aria-label="Tick to group" data-act="tsSel" data-id="'+e.id+'"'+(ui.tsSel[e.id]?' checked':'')+'>')+'</td><td>'+L.fmtUK(e.date)+(e.start?'<div class="work">'+esc(e.start)+'</div>':'')+'</td><td>'+esc(p?p.name:'Deleted project')+'</td><td>'+esc(e.desc||'')+(entryContacts(e)?'<div class="work">'+esc(entryContacts(e))+'</div>':'')+(e.source==='group'?' <span class="pill fill">Group of '+(e.members||[]).length+'</span>':e.source==='email'?' <span class="pill">Email</span>':e.source==='timer'?' <span class="pill">Timer</span>':'')+'</td><td class="num">'+L.fmtHours(e.minutes)+(e.rawMinutes&&e.rawMinutes!==e.minutes?'<div class="work">'+(e.source==='group'?'parts ':'actual ')+L.fmtHM(e.rawMinutes)+'</div>':'')+'</td><td class="num">'+L.fmtMoney(Math.round(e.minutes*(e.ratePence||0)/60))+'<div class="work">@ '+L.fmtMoney(e.ratePence||0)+'</div></td><td><div class="acts">'+(inv?'<span class="pill fill">'+esc(inv.number)+'</span>':'')+'<button class="sm ghost" data-act="entryView" data-id="'+e.id+'">View</button>'+(inv?'':'<button class="sm ghost" data-act="entryEdit" data-id="'+e.id+'">Edit</button><button class="sm ghost" data-act="entryDel" data-id="'+e.id+'">Delete</button>')+'</div></td></tr>'}
 function tsEntries(){var f=ui.ts,q=f.q.trim().toLowerCase(),ranged=!!(f.from||f.to),a=ranged?f.from:ui.week,b=ranged?f.to:L.addDays(ui.week,6);
   var rows=S.entries.filter(function(e){if(a&&e.date<a)return false;if(b&&e.date>b)return false;if(f.proj&&e.projectId!==f.proj)return false;if(f.kind&&(e.source||'manual')!==f.kind)return false;
     if(f.bill==='unbilled'&&e.invoiceId)return false;if(f.bill==='invoiced'&&!e.invoiceId)return false;if(f.bill==='zero'&&e.minutes>0)return false;
@@ -478,7 +483,7 @@ function updateTsTable(){var t=$('tsTable');if(t)t.innerHTML=tsTable();else rend
 function tickedEntries(){return S.entries.filter(function(e){return ui.tsSel[e.id]&&!e.invoiceId})}
 function flatMembers(list){var out=[];list.forEach(function(e){if(e.source==='group'&&Array.isArray(e.members))e.members.forEach(function(m){out.push(m)});else out.push(JSON.parse(JSON.stringify(e)))});return out}
 function entryDetail(e){var p=proj(e.projectId),inv=e.invoiceId&&S.invoices.find(function(i){return i.id===e.invoiceId}),r=function(a,b){return '<tr><th style="width:38%;border:none;padding:5px 10px 5px 0">'+a+'</th><td style="border:none;padding:5px 0">'+b+'</td></tr>'};
-  var h='<h2>Entry</h2><table><tbody>'+r('Project',esc(p?p.name:'Deleted project')+(p&&p.client?', '+esc(p.client):''))+r('Date',L.fmtUK(e.date)+(e.start?' at '+esc(e.start):''))+r('Description',esc(e.desc||'None'))
+  var h='<h2>Entry</h2><table><tbody>'+r('Project',esc(p?p.name:'Deleted project')+(p&&p.client?', '+esc(p.client):''))+r('Date',L.fmtUK(e.date)+(e.start?' at '+esc(e.start):''))+r(e.source==='email'?'Subject':'Description',esc(e.desc||'None'))+(entryContacts(e)?r('Issued',esc(entryContacts(e))):'')
     +r('Billable time',L.fmtHours(e.minutes)+' h ('+L.fmtHM(e.minutes)+')')+(e.rawMinutes&&e.rawMinutes!==e.minutes?r(e.source==='group'?'Sum of its parts':'Actual time',L.fmtHM(e.rawMinutes)):'')
     +r('Fee',L.fmtHours(e.minutes)+' h × '+L.fmtMoney(e.ratePence||0)+' = '+L.fmtMoney(Math.round(e.minutes*(e.ratePence||0)/60)))
     +r('Logged by',{timer:'Timer',email:'Email',group:'Grouping entries',manual:'Typed in'}[e.source]||'Typed in')+r('Invoice',inv?esc(inv.number)+', dated '+L.fmtUK(inv.issueDate):'Not invoiced')+'</tbody></table>';
@@ -507,6 +512,11 @@ function vTimesheet(){
     +fld('From date','tf_from','<input id="tf_from" type="date" value="'+f.from+'">')+fld('To date','tf_to','<input id="tf_to" type="date" value="'+f.to+'">')+'<button class="sm ghost" data-act="tsFilterClear">Clear filters</button></div><div id="tsTable">'+tsTable()+'</div></div>';
   return h}
 
+function parseContacts(txt){return String(txt||'').split(/\r?\n/).map(function(line){var parts=line.split(/[,;<>\t]+/).map(function(x){return x.trim()}).filter(Boolean),em=parts.filter(function(x){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)})[0]||'',nm=parts.filter(function(x){return x!==em}).join(' ');return {name:nm,email:em.toLowerCase()}}).filter(function(c){return c.name||c.email}).slice(0,60)}
+function entryContacts(e){var out=[];var add=function(x){var lab=(x.dir==='from'?'From ':'To ')+(x.f||'');if(x.f&&x.dir&&out.indexOf(lab)<0)out.push(lab)};(e.emails||[]).forEach(add);(e.members||[]).forEach(function(m){(m.emails||[]).forEach(add)});
+  var to=out.filter(function(x){return x.indexOf('To ')===0}).map(function(x){return x.slice(3)}).join('; ').split('; ').filter(function(x,i,a){return x&&a.indexOf(x)===i}),fr=out.filter(function(x){return x.indexOf('From ')===0}).map(function(x){return x.slice(5)}).filter(function(x,i,a){return a.indexOf(x)===i});
+  return [to.length?'To '+to.join('; '):'',fr.length?'From '+fr.join('; '):''].filter(Boolean).join(', ')}
+function lineDesc(e){var c=entryContacts(e);return (e.desc||'')+(c?' ('+c.charAt(0).toLowerCase()+c.slice(1)+')':'')}
 function projEmpty(pid){return !S.entries.some(function(e){return e.projectId===pid})&&!S.invoices.some(function(i){return i.projectId===pid})}
 function dayLabel(d){return !d?'None':d>=31?'Last day of the month':L.ordinal(d)+' of each month'}
 function vProjects(){
@@ -629,7 +639,9 @@ function projForm(p){p=p||{};var days='<option value="0">None</option>';for(var 
     +'<div class="row">'+fld('Client name','p_client','<input id="p_client" value="'+esc(p.client||'')+'">','grow')+fld('Your reference','p_ref','<input id="p_ref" class="w-m" value="'+esc(p.ref||'')+'">')+'</div>'
     +fld('Client address for invoices','p_addr','<textarea id="p_addr">'+esc(p.clientAddress||'')+'</textarea>')
     +'<div class="row">'+fld('Hourly rate, \u00A3 ex VAT','p_rate','<input id="p_rate" class="w-m" inputmode="decimal" value="'+((p.ratePence!=null?p.ratePence:cfg().defaultRatePence)/100).toFixed(2)+'">')+fld('Invoice on','p_day','<select id="p_day">'+days+'</select>')+'</div>'
-    +fld('Extra email match words, comma separated (short codes, nicknames, people, domains)','p_kw','<input id="p_kw" value="'+esc(p.keywords||'')+'">')
+    +fld('Contacts on this project, one per line as Name, email','p_contacts','<textarea id="p_contacts" placeholder="Jo Carter, jo@carter.co.uk">'+esc((p.contacts||[]).map(function(c){return [c.name,c.email].filter(Boolean).join(', ')}).join('\n'))+'</textarea>')
+    +'<p class="hint" style="margin:-6px 0 0">Emails to or from these people are matched to this project. A person on one project only is matched straight away. Someone on several projects is decided by the subject line.</p>'
+    +fld('Other match words, comma separated (short codes, nicknames)','p_kw','<input id="p_kw" value="'+esc(p.keywords||'')+'">')
     +(p.id?'<p class="hint">Changing the rate affects new entries only. Time already logged keeps the rate it was logged at.</p>':'')
     +'<div class="row"><div class="row right"><button class="ghost" data-act="modalClose">Cancel</button><button data-act="projSave">Save project</button></div></div></div>')}
 function entryForm(e){modal('<h2>Edit entry</h2><div class="stack"><input type="hidden" id="x_id" value="'+e.id+'">'
@@ -710,14 +722,14 @@ async function logEmails(){var v=ui.em,c=cfg(),ems=emVisible().filter(function(e
   if(ems.some(function(em){return !v.proj[em.id]})){toast('Choose a project for every ticked email.');return}
   if(ems.some(function(em){var n=v.min[em.id]===''||v.min[em.id]==null?0:+v.min[em.id];return !(n>=0)})){toast('Minutes must be zero or more.');return}
   var now=new Date().toISOString(),mk=function(em){var p=proj(v.proj[em.id]),raw=Math.round(+v.min[em.id]||0),sent=isSent(em),who=partyText(em);
-      return {projectId:v.proj[em.id],date:emDate(em),start:em.receivedDateTime?L.timeLondon(new Date(em.receivedDateTime)):'',desc:(sent?'Email to ':'Email from ')+(who||'unknown')+': '+String(em.subject||'(no subject)'),rawMinutes:raw,minutes:raw>0?L.roundMinutes(raw,c.rounding):0,ratePence:(p&&p.ratePence)||0,source:'email',invoiceId:null,
+      return {projectId:v.proj[em.id],date:emDate(em),start:em.receivedDateTime?L.timeLondon(new Date(em.receivedDateTime)):'',desc:String(em.subject||'(no subject)'),rawMinutes:raw,minutes:raw>0?L.roundMinutes(raw,c.rounding):0,ratePence:(p&&p.ratePence)||0,source:'email',invoiceId:null,
         emails:[{s:String(em.subject||'').slice(0,140),f:who.slice(0,120),t:em.receivedDateTime||'',dir:sent?'to':'from'}],createdAt:now}};
   // Emails with the same subject line, project and day are logged as one group. Everything else is logged on its own.
   var buckets={},order=[];ems.forEach(function(em){var k=v.proj[em.id]+'|'+emThread(em);if(!buckets[k]){buckets[k]=[];order.push(k)}buckets[k].push(em)});
   try{var made=0;for(var i=0;i<order.length;i++){var list=buckets[order[i]].slice().sort(function(a,b){return String(a.receivedDateTime)<String(b.receivedDateTime)?-1:1});
       if(list.length===1){await Store.set('entries',uid(),mk(list[0]));made++;continue}
       var mem=list.map(function(em){var m=mk(em);m.id=uid();return m}),subj=String(list[0].subject||'(no subject)').replace(/^((re|fw|fwd):\s*)+/i,'').trim();
-      await Store.set('entries',uid(),{projectId:mem[0].projectId,date:mem[0].date,start:mem[0].start,desc:'Emails, '+mem.length+' on one subject: '+subj,rawMinutes:mem.reduce(function(t,m){return t+m.rawMinutes},0),minutes:mem.reduce(function(t,m){return t+m.minutes},0),ratePence:mem[0].ratePence,source:'group',auto:true,members:mem,invoiceId:null,createdAt:now});made++}
+      await Store.set('entries',uid(),{projectId:mem[0].projectId,date:mem[0].date,start:mem[0].start,desc:subj,rawMinutes:mem.reduce(function(t,m){return t+m.rawMinutes},0),minutes:mem.reduce(function(t,m){return t+m.minutes},0),ratePence:mem[0].ratePence,source:'group',auto:true,members:mem,invoiceId:null,createdAt:now});made++}
     await markEmails(ems,'l');var map=JSON.parse(JSON.stringify(S.sendermap)),ch=false;ems.forEach(function(em){matchView(em).parties.forEach(function(s){var h=L.hash(s),cur=map[h];if(typeof cur==='string'){var o={};o[cur]=1;cur=o}cur=cur||{};cur[v.proj[em.id]]=(cur[v.proj[em.id]]||0)+1;map[h]=cur;ch=true})});if(ch)await Store.set('meta','sendermap',{map:map});
     v.sel={};toast(ems.length+' email'+(ems.length===1?'':'s')+' logged as '+made+' entr'+(made===1?'y':'ies')+(made<ems.length?'. Emails sharing a subject were grouped, and can be ungrouped in the Timesheet.':'. Set or group their time in the Timesheet.'));render()}catch(e){}}
 
@@ -755,7 +767,7 @@ var A={
       for(var i=0;i<sel.length;i++)await Store.del('entries',sel[i].id);ui.tsSel={};toast(mem.length+' entries grouped.');render()}catch(e){}},
   entrySplit:async function(el){var g=S.entries.find(function(x){return x.id===el.dataset.id});if(!g||g.source!=='email'||!g.emails||g.emails.length<2||g.invoiceId)return;closeModal();
     var n=g.emails.length,share=function(total,ix){total=Math.round(total||0);var b=Math.floor(total/n);return b+(ix<total-b*n?1:0)};
-    try{for(var i=0;i<n;i++){var x=g.emails[i],dt=x.t?new Date(x.t):null;await Store.set('entries',uid(),{projectId:g.projectId,date:g.date,start:dt?L.timeLondon(dt):'',desc:(x.dir==='to'?'Email to '+(x.f||'unknown')+': ':x.dir==='from'?'Email from '+(x.f||'unknown')+': ':'Email: ')+(x.s||'(no subject)'),rawMinutes:share(g.rawMinutes||g.minutes,i),minutes:share(g.minutes,i),ratePence:g.ratePence||0,source:'email',invoiceId:null,emails:[x],createdAt:g.createdAt||new Date().toISOString()})}
+    try{for(var i=0;i<n;i++){var x=g.emails[i],dt=x.t?new Date(x.t):null;await Store.set('entries',uid(),{projectId:g.projectId,date:g.date,start:dt?L.timeLondon(dt):'',desc:x.s||'(no subject)',rawMinutes:share(g.rawMinutes||g.minutes,i),minutes:share(g.minutes,i),ratePence:g.ratePence||0,source:'email',invoiceId:null,emails:[x],createdAt:g.createdAt||new Date().toISOString()})}
       await Store.del('entries',g.id);toast('Split into '+n+' email entries. Check the time on each.');render()}catch(e){}},
   memberOut:async function(el){var g=S.entries.find(function(x){return x.id===el.dataset.id}),ix=+el.dataset.m;if(!g||g.source!=='group'||g.invoiceId||!g.members||!g.members[ix])return;closeModal();
     try{var mem=g.members.slice(),out=Object.assign({},mem.splice(ix,1)[0]),oid=out.id||uid();delete out.id;out.invoiceId=null;await Store.set('entries',oid,out);
@@ -771,7 +783,7 @@ var A={
   projEdit:function(el){projForm(proj(el.dataset.id))},
   projSave:async function(){var id=$('p_id').value||uid(),old=proj(id)||{},name=$('p_name').value.trim(),rate=L.parseMoney($('p_rate').value);
     if(!name){toast('Give the project a name.');return}if(rate==null){toast('Enter the hourly rate in pounds, for example 85.00.');return}
-    var data=Object.assign({},old,{name:name,client:$('p_client').value.trim(),ref:$('p_ref').value.trim(),clientAddress:$('p_addr').value.trim(),ratePence:rate,invoiceDay:+$('p_day').value||0,keywords:$('p_kw').value.trim(),active:old.active!==false,createdAt:old.createdAt||new Date().toISOString()});
+    var data=Object.assign({},old,{name:name,client:$('p_client').value.trim(),ref:$('p_ref').value.trim(),clientAddress:$('p_addr').value.trim(),ratePence:rate,invoiceDay:+$('p_day').value||0,keywords:$('p_kw').value.trim(),contacts:parseContacts($('p_contacts').value),active:old.active!==false,createdAt:old.createdAt||new Date().toISOString()});
     closeModal();try{await Store.set('projects',id,data);toast('Project saved.')}catch(e){}},
   projArchive:function(el){var p=proj(el.dataset.id);if(!p)return;var ub=unbilled(p.id),run=S.timer&&S.timer.projectId===p.id;
     if(run){toast('Stop the timer running on this project before archiving it.');return}
@@ -800,7 +812,7 @@ var A={
       await Store.del('meta','timer');toast('Logged '+L.fmtHours(L.roundMinutes(raw,c.rounding))+' h'+(p?' to '+p.name:'')+'.')}catch(e){}},
   timerDiscard:function(){confirmBox('Discard timer','Stop the timer without logging any time?','Discard',function(){Store.del('meta','timer').catch(function(){})})},
   csv:async function(){var r=periodRange(),ents=S.entries.filter(function(e){return inRange(e,r)}).sort(function(a,b){return a.date<b.date?-1:1});if(!ents.length){toast('Nothing to export in this period.');return}
-    var rows=[['Date','Project','Client','Description','Hours','Rate GBP','Amount GBP','Invoice','Source']].concat(ents.map(function(e){var p=proj(e.projectId)||{},inv=S.invoices.find(function(i){return i.id===e.invoiceId});return [L.fmtUK(e.date),p.name||'',p.client||'',e.desc||'',L.fmtHours(e.minutes),((e.ratePence||0)/100).toFixed(2),(Math.round(e.minutes*(e.ratePence||0)/60)/100).toFixed(2),inv?inv.number:'',e.source||'']}));
+    var rows=[['Date','Project','Client','Description','Hours','Rate GBP','Amount GBP','Invoice','Source']].concat(ents.map(function(e){var p=proj(e.projectId)||{},inv=S.invoices.find(function(i){return i.id===e.invoiceId});return [L.fmtUK(e.date),p.name||'',p.client||'',lineDesc(e),L.fmtHours(e.minutes),((e.ratePence||0)/100).toFixed(2),(Math.round(e.minutes*(e.ratePence||0)/60)/100).toFixed(2),inv?inv.number:'',e.source||'']}));
     await saveFile('D-CSM time '+(r[0]?r[0]+' to '+r[1]:'all')+'.csv',L.csv(rows))},
   ics:async function(){var ps=S.projects.filter(function(p){return p.active!==false&&p.invoiceDay});if(!ps.length){toast('Set an invoice day on at least one open project first.');return}
     var stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z'),ics=L.buildICS(S.projects,today,stamp);
@@ -812,7 +824,7 @@ var A={
   invCreate:async function(el){var v=ui.inv,c=cfg(),p=proj(v.projectId),sel=invCandidates().filter(function(e){return !v.excl[e.id]});if(!p||!sel.length)return;el.disabled=true;
     var sub=L.weekSum(sel,v.from,v.to),vat=c.vatOn?Math.round(sub*c.vatRate/100):0,id=uid(),number=c.prefix+String(c.nextNumber).padStart(4,'0');
     var inv={number:number,projectId:p.id,projectName:p.name,ref:p.ref||'',client:p.client||'',clientAddress:p.clientAddress||'',issueDate:v.issueDate,dueDate:L.addDays(v.issueDate,+c.termsDays||0),from:v.from,to:v.to,
-      lines:sel.map(function(e){return {date:e.date,desc:e.desc||'',minutes:e.minutes,ratePence:e.ratePence||0}}),minutes:L.minutes(sel),subtotalPence:sub,vatRate:c.vatOn?+c.vatRate:0,vatPence:vat,totalPence:sub+vat,status:'unpaid',paidDate:'',biz:c,createdAt:new Date().toISOString()};
+      lines:sel.map(function(e){return {date:e.date,desc:lineDesc(e),minutes:e.minutes,ratePence:e.ratePence||0}}),minutes:L.minutes(sel),subtotalPence:sub,vatRate:c.vatOn?+c.vatRate:0,vatPence:vat,totalPence:sub+vat,status:'unpaid',paidDate:'',biz:c,createdAt:new Date().toISOString()};
     try{await Store.set('invoices',id,inv);await Store.set('meta','settings',Object.assign({},S.settings,{nextNumber:(+c.nextNumber||1)+1}));
       for(var i=0;i<sel.length;i+=5)await Promise.all(sel.slice(i,i+5).map(function(e){return Store.set('entries',e.id,Object.assign({},e,{invoiceId:id}))}));
       ui.inv=null;toast('Invoice '+number+' created. Use PDF to download it.');render()}catch(e){el.disabled=false}},
